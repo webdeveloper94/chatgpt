@@ -1,81 +1,117 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthService extends ChangeNotifier {
-  final SupabaseClient _supabase = Supabase.instance.client;
+  final _supabase = Supabase.instance.client;
+  bool _isLoading = false;
+  String? _error;
   User? _currentUser;
-  bool _loading = false;
 
+  bool get isLoading => _isLoading;
+  String? get error => _error;
   User? get currentUser => _currentUser;
-  bool get loading => _loading;
 
   AuthService() {
-    _init();
-  }
-
-  void _init() {
     _currentUser = _supabase.auth.currentUser;
-    _supabase.auth.onAuthStateChange.listen((event) {
-      _currentUser = event.session?.user;
+    _supabase.auth.onAuthStateChange.listen((data) {
+      _currentUser = data.session?.user;
       notifyListeners();
     });
   }
 
-  Future<String?> signUp({
+  Future<void> signUp({
     required String email,
     required String password,
-    required String name,
   }) async {
     try {
-      _loading = true;
+      _isLoading = true;
+      _error = null;
       notifyListeners();
 
-      final response = await _supabase.auth.signUp(
+      await _supabase.auth.signUp(
         email: email,
         password: password,
-        data: {'name': name},
       );
-
-      if (response.user == null) {
-        return 'Signup failed';
-      }
-
-      return null;
     } catch (e) {
-      return e.toString();
+      _error = e.toString();
     } finally {
-      _loading = false;
+      _isLoading = false;
       notifyListeners();
     }
   }
 
-  Future<String?> signIn({
+  Future<void> signIn({
     required String email,
     required String password,
   }) async {
     try {
-      _loading = true;
+      _isLoading = true;
+      _error = null;
       notifyListeners();
 
-      final response = await _supabase.auth.signInWithPassword(
+      await _supabase.auth.signInWithPassword(
         email: email,
         password: password,
       );
-
-      if (response.user == null) {
-        return 'Login failed';
-      }
-
-      return null;
     } catch (e) {
-      return e.toString();
+      _error = e.toString();
     } finally {
-      _loading = false;
+      _isLoading = false;
       notifyListeners();
     }
   }
 
   Future<void> signOut() async {
-    await _supabase.auth.signOut();
+    try {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+
+      await _supabase.auth.signOut();
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> updatePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    try {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+
+      // Verify old password
+      final email = _currentUser?.email;
+      if (email == null) {
+        throw Exception('User email not found');
+      }
+
+      try {
+        await _supabase.auth.signInWithPassword(
+          email: email,
+          password: oldPassword,
+        );
+      } catch (e) {
+        throw Exception('Current password is incorrect');
+      }
+
+      // Update password
+      await _supabase.auth.updateUser(
+        UserAttributes(
+          password: newPassword,
+        ),
+      );
+    } catch (e) {
+      _error = e.toString();
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 }
